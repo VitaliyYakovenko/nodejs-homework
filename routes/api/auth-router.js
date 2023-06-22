@@ -4,9 +4,13 @@ const { authenticate, upload } = require("../../middlewares/index");
 
 
 
-const router = express.Router();
+const  router = express.Router();
 
 router.post("/users/register", upload.single("avatar"), controllers.signup);
+
+router.get("/users/verify/:verificationToken", controllers.verify);
+
+router.post("/users/verify" , controllers.resendVerifyEmal);
 
 router.post("/users/login", controllers.signin);
 
