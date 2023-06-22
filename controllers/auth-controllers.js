@@ -1,26 +1,41 @@
 const bcrypt = require("bcryptjs");
 const jwt = require('jsonwebtoken');
 const User = require("../models/user");
-const {userRegisretSchema, HttpError , RANDOM_KEY} = require("../utils/index");
+const fs = require("fs/promises");
+const path = require("path");
+const gravatar = require("gravatar");
+const Jimp = require("jimp");
+const { userRegisretSchema, HttpError, RANDOM_KEY } = require("../utils/index");
+
+const avatarsDir = path.resolve("public", "avatars");
+
+
 
 
 const signup = async (req, res, next) => {
 
     try {
         const { error } = userRegisretSchema.validate(req.body);
+
         if (error) {
             throw HttpError(400, "missing required field")
         }
 
         const { email, password } = req.body;
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email });    
         
+        const avatarURL = gravatar.url(email);
+
         if (user) { 
            throw HttpError(409, "Email in use")
         }
 
         const hashPassword = await bcrypt.hash(password, 10);
-        const newUser = await User.create({...req.body, password: hashPassword});
+        const newUser = await User.create({
+            ...req.body,
+            password: hashPassword,
+            avatarURL,
+        });
         res.status(201).json({
             user: {
                 email: newUser.email,
@@ -95,9 +110,42 @@ const logout = async (req, res) => {
 
 
 
+const updateAvatar = async (req, res, next) => {
+  try {
+    const { _id } = req.user;
+    if (!req.file) {
+      throw HttpError(400, "missing required file");
+    }
+
+      const { path: oldPath, filename } = req.file;
+      const newPath = path.join(avatarsDir, filename);
+
+
+      const image = await Jimp.read(oldPath);
+      image.resize(250, 250);
+      await image.writeAsync(newPath);
+
+      await fs.unlink(oldPath);
+      const avatarURL = path.join("avatars", filename);
+
+      await User.findByIdAndUpdate(_id, { avatarURL });
+
+    res.status(200).json({
+      avatarURL
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+
 module.exports = {
     signup,
     signin,
     getCurrent,
     logout,
+    updateAvatar
 };
