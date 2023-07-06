@@ -4,6 +4,8 @@ const userRegisretSchema = require('./userRegisretSchema');
 const HttpError = require("./HttpError");
 const RANDOM_KEY = require("./key");
 const mongooseError = require("./mongooseError");
+const sendEmail = require("./sendEmail");
+const userEmailSchema = require("./userEmailSchema");
 
 
 module.exports = {
@@ -13,4 +15,6 @@ module.exports = {
     HttpError,
     RANDOM_KEY,
     mongooseError,
+    sendEmail,
+    userEmailSchema,
 };

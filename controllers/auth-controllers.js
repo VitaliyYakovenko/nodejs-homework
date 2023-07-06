@@ -5,8 +5,16 @@ const fs = require("fs/promises");
 const path = require("path");
 const gravatar = require("gravatar");
 const Jimp = require("jimp");
-const { userRegisretSchema, HttpError, RANDOM_KEY } = require("../utils/index");
+const {nanoid} = require("nanoid");
 
+const { userRegisretSchema,
+    HttpError,
+    RANDOM_KEY,
+    sendEmail, 
+    userEmailSchema} = require("../utils/index");
+
+
+const BASE_URL = `http://localhost:3000`;
 const avatarsDir = path.resolve("public", "avatars");
 
 
@@ -18,14 +26,15 @@ const signup = async (req, res, next) => {
         const { error } = userRegisretSchema.validate(req.body);
 
         if (error) {
-            throw HttpError(400, "missing required field")
+            throw HttpError(400, "Missing required field")
         }
 
         const { email, password } = req.body;
         const user = await User.findOne({ email });    
         
         const avatarURL = gravatar.url(email);
-
+        const verificationToken = nanoid();
+   
         if (user) { 
            throw HttpError(409, "Email in use")
         }
@@ -35,7 +44,20 @@ const signup = async (req, res, next) => {
             ...req.body,
             password: hashPassword,
             avatarURL,
+            verificationToken
         });
+
+        const verificationEmal = {
+            to: email,
+            subject: "Verify email",
+            html: `<a target="_blank" 
+            href="${BASE_URL}/api/auth/users/verify/${verificationToken}">
+            Click verify link 
+            </a>`
+        };
+          
+        await sendEmail(verificationEmal);
+
         res.status(201).json({
             user: {
                 email: newUser.email,
@@ -47,22 +69,84 @@ const signup = async (req, res, next) => {
         next(error);
     };
 };
-    
 
-const signin = async (req, res, next) => { 
+
+const verify = async (req, res, next) => {
+    
+    try { 
+        const { verificationToken } = req.params;
+        const user = await User.findOne({ verificationToken });
+         if (!user) {
+             throw HttpError(404, 'User not found');
+         }
+        await User.findByIdAndUpdate(user._id, { verify: true, verificationToken: "" });
+
+        res.status(200).json({ message: "Verification successful" });
+
+    } catch (error) {
+        next(error);
+    }
+}
+
+
+const resendVerifyEmal = async (req, res, next) => {
+    try {
+        const { error } = userEmailSchema.validate(req.body);
+        console.log(error);
+        if (error) {
+            throw HttpError(400, "Missing required field")
+        }
+        
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            throw HttpError(400, "Could not find such user");
+        }
+
+        if (user.verify) {
+             throw HttpError(400, "Verification has already been passed");
+        }
+ 
+
+        const verificationEmal = {
+            to: email,
+            subject: "Verify email",
+            html: `<a target="_blank" 
+            href="${BASE_URL}/api/auth/users/verify/${user.verificationToken}">
+            Click verify link 
+            </a>`
+        };
+
+        await sendEmail(verificationEmal);
+        res.status(200).json({message: "Verification email sent"})
+    } catch (error) {
+        next(error);
+    }
+    
+};
+
+
+
+const signin = async (req, res, next) => {
+
     try {
         const { error } = userRegisretSchema.validate(req.body);
         if (error) {
-            throw HttpError(400, "missing required field");
+            throw HttpError(400, "Missing required field");
         }
 
         const { email, password } = req.body;
-
+  
         const user = await User.findOne({ email });
         if (!user) {
             throw HttpError(401, "Email or password is wrong");
         }
         
+        if (!user.verify) {
+             throw HttpError(401,"Email not verified");
+        }
+
         const passwordCompare = await bcrypt.compare(password, user.password);
 
         if (!passwordCompare) {
@@ -114,7 +198,7 @@ const updateAvatar = async (req, res, next) => {
   try {
     const { _id } = req.user;
     if (!req.file) {
-      throw HttpError(400, "missing required file");
+      throw HttpError(400, "Missing required file");
     }
 
       const { path: oldPath, filename } = req.file;
@@ -144,6 +228,8 @@ const updateAvatar = async (req, res, next) => {
 
 module.exports = {
     signup,
+    verify,
+    resendVerifyEmal,
     signin,
     getCurrent,
     logout,
